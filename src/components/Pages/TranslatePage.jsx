@@ -1,19 +1,26 @@
 import React, { useState, useRef } from "react";
 import { UploadCloud, FileText, Languages, Key, ArrowRight, X, Loader2 } from "lucide-react";
-import "./translatePage.css";
+import "./translatePage.css"
+import EpubProcessor from "../fileProcessing/EpubProcessor"
 
 const TranslationPage = () => {
   const [file, setFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef(null);
+  const [glossaryReady, setGlossaryReady] = useState(false);
+  const [editableGlossary, setEditableGlossary] = useState([]);
+  const [showMetaForm, setShowMetaForm] = useState(false);
 
   const [formData, setFormData] = useState({
     apiKey: "",
     fileType: "epub",
     sourceLang: "auto",
     targetLang: "zh",
-    model: "gpt-4o"
+    model: "gpt-4o",
+    bookTitle: "",
+    author: "",
+    domain: ""
   });
 
   const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
@@ -31,14 +38,34 @@ const TranslationPage = () => {
     }
   };
   
-  const handleTranslate = () => {
+  const handleTranslate = async () => {
     if (!file || !formData.apiKey) return;
-    setIsProcessing(true);
-    setTimeout(() => {
-      setIsProcessing(false);
-      alert("Translation simulation complete!");
-    }, 3000);
-  };
+    const TypeofFile = file.name.split(".").pop()?.toLowerCase()
+    if (formData.fileType != TypeofFile){
+      alert(`Uploaded file format is different from selected document format, Uploaded ${TypeofFile}, expecting ${formData.fileType}`)
+      return
+    }
+    setIsProcessing(true)
+    if (formData.fileType === "epub"){
+      await EpubProcessor(file, {
+        apiKey: formData.apiKey,
+        sourceLang: formData.sourceLang,
+        targetLang: formData.targetLang,
+        bookTitle: formData.bookTitle,
+        author: formData.author,
+        domain: formData.domain,
+        glossaryOnly: !glossaryReady,
+        overrideGlossary: glossaryReady ? editableGlossary : null
+      }).then((res) => {
+        if (!glossaryReady && res?.detailedGlossary) {
+          const sorted = [...res.detailedGlossary].sort((a, b) => (b.count || 0) - (a.count || 0))
+          setEditableGlossary(sorted)
+          setGlossaryReady(true)
+        }
+      })
+    }
+    setIsProcessing(false)
+  }
 
   return (
     <div className="translate-root">
@@ -93,7 +120,7 @@ const TranslationPage = () => {
                   value={formData.sourceLang}
                   onChange={(e) => setFormData({ ...formData, sourceLang: e.target.value })}
                 >
-                  <option value="auto">Auto Detect</option>
+                  <option value="detect this language">Auto Detect</option>
                   <option value="en">English</option>
                   <option value="zh">Chinese</option>
                   <option value="es">Spanish</option>
@@ -115,6 +142,41 @@ const TranslationPage = () => {
                   <option value="fr">French</option>
                 </select>
               </div>
+              <button
+                type="button"
+                className="translate-format-button"
+                onClick={() => setShowMetaForm(!showMetaForm)}
+              >
+                {showMetaForm ? "Hide Details" : "Set Details"}
+              </button>
+              {showMetaForm && (
+                <div className="translate-field">
+                  <label className="translate-label">Book Title</label>
+                  <input
+                    type="text"
+                    className="translate-input"
+                    placeholder="Optional"
+                    value={formData.bookTitle}
+                    onChange={(e) => setFormData({ ...formData, bookTitle: e.target.value })}
+                  />
+                  <label className="translate-label">Author</label>
+                  <input
+                    type="text"
+                    className="translate-input"
+                    placeholder="Optional"
+                    value={formData.author}
+                    onChange={(e) => setFormData({ ...formData, author: e.target.value })}
+                  />
+                  <label className="translate-label">Domain</label>
+                  <input
+                    type="text"
+                    className="translate-input"
+                    placeholder="e.g. Philosophy"
+                    value={formData.domain}
+                    onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
@@ -155,7 +217,7 @@ const TranslationPage = () => {
                   <div className="translate-upload-icon">
                     <UploadCloud size={40} color="#9d8f73" />
                   </div>
-                  <h3 className="font-cinzel translate-dropzone-title">Upload Artifact</h3>
+                  <h3 className="font-cinzel translate-dropzone-title">Upload File</h3>
                   <p className="translate-dropzone-text">
                     Drag and drop your manuscript here, or click to browse.
                     <span className="translate-dropzone-note">Supported formats: EPUB, PDF, DOCX</span>
@@ -188,14 +250,73 @@ const TranslationPage = () => {
                 </>
               ) : (
                 <>
-                  BEGIN TRANSMUTATION <ArrowRight size={20} />
+                  {glossaryReady ? "BEGIN TRANSLATION" : "GENERATE TERMTABLE"} <ArrowRight size={20} />
                 </>
               )}
             </button>
+            {glossaryReady && (
+              <div className="translate-panel" style={{ marginTop: "1rem" }}>
+                <div className="translate-panel-heading">
+                  <FileText size={18} />
+                  <span className="font-cinzel">GLOSSARY EDITOR</span>
+                </div>
+                <p className="translate-dropzone-note">Edit translations, remove rows, or add new terms before final translation.</p>
+                <div className="glossary-editor">
+                  {editableGlossary.map((item, idx) => (
+                    <div className="glossary-row" key={`${item.term}-${idx}`}>
+                      <input
+                        className="translate-input"
+                        value={item.term}
+                        onChange={(e) => {
+                          const next = [...editableGlossary];
+                          next[idx] = { ...next[idx], term: e.target.value };
+                          setEditableGlossary(next);
+                        }}
+                        placeholder="Term"
+                      />
+                      <input
+                        className="translate-input"
+                        value={item.translation || ""}
+                        onChange={(e) => {
+                          const next = [...editableGlossary];
+                          next[idx] = { ...next[idx], translation: e.target.value };
+                          setEditableGlossary(next);
+                        }}
+                        placeholder="Translation"
+                      />
+                      <span className="translate-count-pill">freq: {item.count ?? 0}</span>
+                      <button
+                        type="button"
+                        className="translate-remove-button"
+                        onClick={() => {
+                          const next = editableGlossary.filter((_, i) => i !== idx);
+                          setEditableGlossary(next);
+                        }}
+                      >
+                        <X size={14} /> Remove
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="translate-format-button"
+                    onClick={() => setEditableGlossary([...editableGlossary, { term: "", translation: "" }])}
+                  >
+                    Add Term
+                  </button>
+                </div>
+              </div>
+            )}
 
-            {!formData.apiKey && (
+             <div className="translate-warning-stack">
+              {!formData.apiKey && (
               <p className="translate-warning">* API Key is required to proceed</p>
             )}
+            {!file && (
+                <p className="translate-warning">* File is required to proceed</p>
+            )}  
+             </div>
+
           </div>
         </div>
       </div>
