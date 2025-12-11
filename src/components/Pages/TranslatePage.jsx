@@ -2,6 +2,7 @@ import React, { useState, useRef } from "react";
 import { UploadCloud, FileText, Languages, Key, ArrowRight, X, Loader2 } from "lucide-react";
 import "./translatePage.css"
 import EpubProcessor from "../fileProcessing/EpubProcessor"
+import { useNavigate } from "react-router-dom";
 
 const TranslationPage = () => {
   const [file, setFile] = useState(null);
@@ -11,13 +12,14 @@ const TranslationPage = () => {
   const [glossaryReady, setGlossaryReady] = useState(false);
   const [editableGlossary, setEditableGlossary] = useState([]);
   const [showMetaForm, setShowMetaForm] = useState(false);
+  const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
     apiKey: "",
     fileType: "epub",
-    sourceLang: "auto",
+    sourceLang: "eng",
     targetLang: "zh",
-    model: "gpt-4o",
+    model: "deepseek-chat",
     bookTitle: "",
     author: "",
     domain: ""
@@ -51,6 +53,7 @@ const TranslationPage = () => {
         apiKey: formData.apiKey,
         sourceLang: formData.sourceLang,
         targetLang: formData.targetLang,
+        model: formData.model,
         bookTitle: formData.bookTitle,
         author: formData.author,
         domain: formData.domain,
@@ -85,7 +88,16 @@ const TranslationPage = () => {
                 <span className="font-cinzel">ACCESS CREDENTIALS</span>
               </div>
               <div className="translate-field">
-                <label className="translate-label">OpenAI API Key</label>
+                <label className="translate-label">LLM API Key
+                  <button
+                    type="button"
+                    className="translate-help"
+                    onClick={() => navigate("/features#api-key-card")}
+                    title="What is it?"
+                  >
+                    ?
+                  </button>
+                </label>
                 <input
                   type="password"
                   placeholder="sk-..."
@@ -101,9 +113,8 @@ const TranslationPage = () => {
                   value={formData.model}
                   onChange={(e) => setFormData({ ...formData, model: e.target.value })}
                 >
-                  <option value="gpt-4o">GPT-4o (Recommended)</option>
-                  <option value="gpt-4-turbo">GPT-4 Turbo</option>
-                  <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                  <option value="deepseek-chat">deepseek-chat(Recommended)</option>
+                  <option value="gpt-5-mini">gpt-5-mini</option>
                 </select>
               </div>
             </div>

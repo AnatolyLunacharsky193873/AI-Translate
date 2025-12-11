@@ -1,0 +1,313 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+
+.features-root {
+  width: 100%;
+  min-height: 100vh;
+  background: rgba(10, 10, 10, 0.1);
+  color: #e2dcc8;
+  font-family: "Cormorant Garamond", serif;
+  overflow-x: hidden;
+  position: relative;
+}
+
+.features-shell {
+  position: relative;
+  z-index: 10;
+  max-width: 75rem;
+  margin: 0 auto;
+  padding: 6rem 2rem 4rem;
+}
+
+.features-spiral-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(203,161,100,0.10), transparent 45%),
+    radial-gradient(circle at 80% 70%, rgba(255,248,231,0.08), transparent 40%),
+    conic-gradient(from 90deg at 50% 50%, rgba(203,161,100,0.12), rgba(255,255,255,0.04), rgba(203,161,100,0.05), rgba(255,255,255,0.04), rgba(203,161,100,0.12));
+  mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.5), rgba(0,0,0,0));
+  opacity: 0.6;
+  animation: features-spin 26s linear infinite;
+}
+
+@keyframes features-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.features-header {
+  text-align: center;
+  margin-bottom: 5rem;
+  position: relative;
+}
+
+.features-eyebrow {
+  font-family: "Cinzel", serif;
+  color: #cba164;
+  font-size: 0.8rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+  opacity: 0.8;
+}
+
+.features-title {
+  font-size: clamp(3rem, 5vw, 4.5rem);
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+  background: linear-gradient(to bottom, #fff8e7, #8a7e66);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  line-height: 1.1;
+}
+
+.features-subtitle {
+  font-size: 1.3rem;
+  color: #9d8f73;
+  font-style: italic;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.features-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 2rem;
+  opacity: 0.3;
+}
+
+.features-divider .line {
+  height: 1px;
+  width: 100px;
+  background: #cba164;
+}
+
+.features-divider .dot {
+  width: 4px;
+  height: 4px;
+  background: #cba164;
+  transform: rotate(45deg);
+}
+
+.features-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  grid-auto-rows: minmax(300px, auto)
+}
+
+.feature-card {
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(226, 220, 200, 0.15);
+  padding: 2.5rem;
+  position: relative;
+  transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+}
+
+.feature-card:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-color: rgba(203, 161, 100, 0.3);
+  transform: translateY(-4px);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+}
+
+.feature-wide,
+.feature-tall,
+.feature-standard {
+  grid-column: span 1;
+}
+
+.feature-cta {
+  grid-column: span 12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: linear-gradient(45deg, rgba(203, 161, 100, 0.05), transparent);
+  border: 1px dashed rgba(203, 161, 100, 0.3);
+}
+
+@media (min-width: 1024px) {
+  .feature-cta {
+    grid-column: span 4;
+  }
+}
+
+.feature-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+}
+
+.feature-icon-wrapper {
+  color: #cba164;
+  padding: 0.75rem;
+  background: rgba(203, 161, 100, 0.05);
+  border-radius: 4px;
+  border: 1px solid rgba(203, 161, 100, 0.1);
+}
+
+.feature-id {
+  font-family: "Cinzel", serif;
+  font-size: 3rem;
+  line-height: 0.8;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.03);
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  user-select: none;
+}
+
+.feature-tech-spec {
+  font-family: "Cinzel", serif;
+  font-size: 0.7rem;
+  color: #cba164;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.5rem;
+  opacity: 0.7;
+}
+
+.feature-title {
+  font-family: "Cormorant Garamond", serif;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: #fff8e7;
+  margin-bottom: 0.25rem;
+}
+
+.feature-subtitle {
+  font-family: "Cinzel", serif;
+  font-size: 0.8rem;
+  color: #9d8f73;
+  margin-bottom: 1.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.feature-body {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  color: #b0a895;
+  font-weight: 300;
+}
+
+.feature-link {
+  color: #cba164;
+  text-decoration: underline;
+}
+
+.feature-highlight {
+  border-color: rgba(203, 161, 100, 0.6);
+  box-shadow: 0 0 0 8px rgba(203, 161, 100, 0.1);
+  animation: highlight-pulse 1s ease-in-out 2;
+}
+
+@keyframes highlight-pulse {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+  100% { transform: translateY(0); }
+}
+
+.feature-highlight {
+  border-color: rgba(203, 161, 100, 0.6);
+  box-shadow: 0 0 0 8px rgba(203, 161, 100, 0.1);
+  animation: highlight-pulse 1s ease-in-out 2;
+}
+
+@keyframes highlight-pulse {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+  100% { transform: translateY(0); }
+}
+
+.feature-bg-tech {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 2px 2px, rgba(203, 161, 100, 0.05) 1px, transparent 0),
+    conic-gradient(from 180deg at 50% 50%, rgba(255,255,255,0.05), rgba(203,161,100,0.12), rgba(255,255,255,0.05));
+  background-size: 20px 20px, 240% 240%;
+  opacity: 0.4;
+  z-index: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+.feature-cta h3 {
+  font-family: "Cinzel", serif;
+  color: #e2dcc8;
+  margin-bottom: 0.5rem;
+}
+
+.feature-cta p {
+  color: #9d8f73;
+  font-size: 0.9rem;
+  font-style: italic;
+}
+
+.feature-cta-button {
+  display: inline-block;
+  margin-top: 0.75rem;
+  padding: 0.65rem 1.2rem;
+  border: 1px solid rgba(203,161,100,0.4);
+  color: #cba164;
+  text-decoration: none;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  font-family: "Cinzel", serif;
+  letter-spacing: 0.05em;
+}
+
+.feature-cta-button:hover {
+  background: rgba(203,161,100,0.12);
+  border-color: rgba(203,161,100,0.6);
+}
+
+.features-footer {
+  margin-top: 5rem;
+  text-align: center;
+  color: #555;
+  font-family: "Cinzel", serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.2em;
+}
+
+.translate-footer-dots {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  margin-bottom: 1.5rem;
+  opacity: 0.5;
+}
+
+.translate-footer-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #cba164;
+}
+
+@media (max-width: 768px) {
+  .features-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .feature-wide, .feature-tall, .feature-standard, .feature-cta {
+    grid-column: span 1;
+  }
+  
+  .features-title {
+    font-size: 2.5rem;
+  }
+}

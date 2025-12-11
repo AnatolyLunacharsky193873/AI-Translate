@@ -1,7 +1,8 @@
 import OpenAI from "openai";
 const MAX_RETRIES = 3
 const BASE_DELAY_MS = 200
-const REQUEST_TIMEOUT_MS = 60000
+const REQUEST_TIMEOUT_MS_DS = 60000
+const REQUEST_TIMEOUT_MS_GPT = 150000
 
 export default async function LLM_Request(textChunks, termTable, mode = "text", context = "", options = {}){
   const sourceLang = options.sourceLang
@@ -12,11 +13,17 @@ export default async function LLM_Request(textChunks, termTable, mode = "text", 
   const apiKey = options.apiKey
   const presetPrompt = ""
   let parsedResult = []
+  const selectedModel = options.model || "deepseek-chat"
+  const isOpenAIModel = (selectedModel || "").toLowerCase().startsWith("gpt")
+  const baseURL = isOpenAIModel
+    ? (window.location.origin + '/openai')
+    : (window.location.origin + '/deepseek')
 
   const openai = new OpenAI({
-      baseURL: window.location.origin + '/deepseek',
+      baseURL,
       apiKey,
-      dangerouslyAllowBrowser: true
+      dangerouslyAllowBrowser: true,
+      timeout: isOpenAIModel ? REQUEST_TIMEOUT_MS_GPT :REQUEST_TIMEOUT_MS_DS
   })
 
   if (mode === "table") {
@@ -26,7 +33,7 @@ export default async function LLM_Request(textChunks, termTable, mode = "text", 
       const systemPrompt = buildGlossaryPrompt(sourceLang, targetLang, bookTitle, author, domain, presetPrompt);
       const userPrompt = JSON.stringify(termList);
 
-      console.log("🚀 [Glossary] Sending request to DeepSeek...");
+      console.log("🚀 [Glossary] Sending request to LLM...");
 
       try {
         const completion = await sendWithRetry(() => openai.chat.completions.create({
@@ -34,10 +41,9 @@ export default async function LLM_Request(textChunks, termTable, mode = "text", 
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userPrompt }
             ],
-            model: "deepseek-chat",
-            temperature: 1.3,
+            model: selectedModel,
+            ...(!isOpenAIModel && {temperature: 1.3}),
             response_format: { type: "json_object" },
-            timeout: REQUEST_TIMEOUT_MS
         }))
 
         const rawContent = completion.choices[0].message.content;
@@ -64,9 +70,8 @@ export default async function LLM_Request(textChunks, termTable, mode = "text", 
           { role: "system", content: systemPrompt },
           { role: "user", content: userPayload }
         ],
-        model: "deepseek-chat",
+        model: selectedModel,
         response_format: { type: "json_object" },
-        timeout: REQUEST_TIMEOUT_MS
       }))
       const rawContent = completion.choices[0].message.content
       console.log("[Text] rawContent:", rawContent)

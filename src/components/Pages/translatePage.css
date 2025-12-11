@@ -97,6 +97,19 @@
   box-shadow: 0 0 10px rgba(203, 161, 100, 0.1);
 }
 
+.translate-help {
+  margin-left: 8px;
+  background: rgba(203,161,100,0.15);
+  border: 1px solid rgba(203,161,100,0.4);
+  color: #cba164;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
 .translate-actions {
   display: flex;
   flex-direction: column;

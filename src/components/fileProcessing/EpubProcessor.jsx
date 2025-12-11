@@ -11,7 +11,7 @@ const MAX_CONCURRENCY =20
 export default async function EpubProcessor(file, options = {}){
     try{
         console.log("Starting resolve Epub...");
-        const { sourceLang = "en", targetLang = "zh", apiKey = "", bookTitle = "", author = "", domain = "", glossaryOnly = false, overrideGlossary = null } = options
+        const { sourceLang = "en", targetLang = "zh", apiKey = "", bookTitle = "", author = "", domain = "", model = "deepseek-chat", glossaryOnly = false, overrideGlossary = null } = options
 
         const arrayBuffer = await file.arrayBuffer()
         const zip = await JSZip.loadAsync(arrayBuffer)
@@ -68,7 +68,7 @@ export default async function EpubProcessor(file, options = {}){
         const fullPlainText = allBookText.join("\n")
         console.log("Generating termTable...")
         let termTable = await generateTermTable(fullPlainText, { topN: 150, minFreq: 3, language: sourceLang })
-        const glossary = await translateGlossary(termTable, { sourceLang, targetLang, apiKey, bookTitle, author, domain })
+        const glossary = await translateGlossary(termTable, { sourceLang, targetLang, apiKey, bookTitle, author, domain, model })
         let translationGlossary = glossary.simpleGlossary
         if (overrideGlossary && Array.isArray(overrideGlossary) && overrideGlossary.length > 0) {
             translationGlossary = overrideGlossary.map(item => ({ term: item.term, translation: item.translation || "" }))
@@ -104,7 +104,7 @@ export default async function EpubProcessor(file, options = {}){
                     const start = chunkStartIndex
                     const end = i
                     const contextSnapshot = previousChunkText
-                    tasks.push(() => processChunkTask(doc, termTable, chunkSnapshot, start, end, contextSnapshot, { sourceLang, targetLang, apiKey, bookTitle, author, domain }))
+                    tasks.push(() => processChunkTask(doc, termTable, chunkSnapshot, start, end, contextSnapshot, { sourceLang, targetLang, apiKey, bookTitle, author, domain, model }))
                     currentChunk = []
                     currentTokenCount = 0
                     chunkStartIndex = i
@@ -118,7 +118,7 @@ export default async function EpubProcessor(file, options = {}){
             if (currentChunk.length > 0) {
                 const chunkSnapshot = [...currentChunk]
                 const contextSnapshot = previousChunkText
-                tasks.push(() => processChunkTask(doc, termTable, chunkSnapshot, chunkStartIndex, textNodes.length, contextSnapshot, { sourceLang, targetLang, apiKey, bookTitle, author, domain }))
+                tasks.push(() => processChunkTask(doc, termTable, chunkSnapshot, chunkStartIndex, textNodes.length, contextSnapshot, { sourceLang, targetLang, apiKey, bookTitle, author, domain, model }))
                 previousChunkText = chunkSnapshot.map(node => node.innerHTML).join("\n")
             }
 

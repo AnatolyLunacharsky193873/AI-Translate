@@ -20,7 +20,7 @@ const Layout = ({ children }) => {
           <div className="layout-nav-links font-garamond">
             <Link to="/" className="layout-nav-link">Home</Link>
             <Link to="/translate" className="layout-nav-link">Translate</Link>
-            <Link to="/about" className="layout-nav-link">Features</Link>
+            <Link to="/features" className="layout-nav-link">Features</Link>
           </div>
 
           <button className="layout-mobile-toggle" onClick={() => setIsNavOpen(!isNavOpen)}>
@@ -33,7 +33,7 @@ const Layout = ({ children }) => {
             <nav className="layout-mobile-links font-garamond">
               <Link to="/" className="layout-mobile-link" onClick={() => setIsNavOpen(false)}>Home</Link>
               <Link to="/translate" className="layout-mobile-link" onClick={() => setIsNavOpen(false)}>Translate</Link>
-              <Link to="/about" className="layout-mobile-link" onClick={() => setIsNavOpen(false)}>Features</Link>
+              <Link to="/features" className="layout-mobile-link" onClick={() => setIsNavOpen(false)}>Features</Link>
             </nav>
           </div>
         )}

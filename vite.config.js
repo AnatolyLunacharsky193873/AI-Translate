@@ -1,5 +1,5 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite"
+import react from "@vitejs/plugin-react"
 
 export default defineConfig({
   plugins: [react()],
@@ -8,15 +8,23 @@ export default defineConfig({
     outDir: "docs",
   },
   
+  //CORS连不上只能这样
   server: {
     proxy: {
-      // 当你请求 /deepseek/... 时，Vite 会把它转发给 https://api.deepseek.com/...
+      //deepseek
       '/deepseek': {
         target: 'https://api.deepseek.com',
-        changeOrigin: true, // 允许跨域
-        secure: true,       // 如果是 https 接口，通常需要这个
-        rewrite: (path) => path.replace(/^\/deepseek/, ''), // 去掉路径中的 /deepseek 前缀
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/deepseek/, ''),
+      },
+      // OpenAI
+      '/openai': {
+        target: 'https://api.openai.com/v1',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/openai/, ''),
       },
     },
   },
-});
+})

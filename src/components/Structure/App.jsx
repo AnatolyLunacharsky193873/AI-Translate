@@ -4,6 +4,7 @@ import Cover from "../cover_UI/Cover.jsx";
 import Layout from "./Layout.jsx";
 import HomePgae from "../Pages/HomePgae.jsx";
 import Translate from "../Pages/TranslatePage.jsx"
+import Features from "../Pages/features.jsx";
 
 export default function App() {
   const [introComplete, setIntroComplete] = useState(false);
@@ -20,6 +21,7 @@ export default function App() {
             <Route path="/" element={<Layout />}>
             <Route index element={<HomePgae />} />
             <Route path="/translate" element={<Translate/>}/>
+            <Route path="/features" element={<Features/>}/>
             </Route>
           </Routes>
         </div>
