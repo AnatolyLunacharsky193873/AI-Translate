@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react"
 
 export default defineConfig({
   plugins: [react()],
-  base: "/p98/",
+  base: "/AI-Translate/",
   build: {
     outDir: "docs",
   },
