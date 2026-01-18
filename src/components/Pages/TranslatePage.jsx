@@ -154,7 +154,7 @@ const TranslationPage = () => {
                 >
                   <option value="deepseek-chat">deepseek-chat(Recommended)</option>
                   <option value="gpt-5-mini">gpt-5-mini</option>
-                  <option value="gpt-5.1">gpt-5.1</option>
+                  <option value="gpt-5.2">gpt-5.2</option>
                 </select>
               </div>
               <label className="translate-checkbox">
