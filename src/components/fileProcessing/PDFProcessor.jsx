@@ -7,12 +7,15 @@ import translateGlossary from "./GlossaryTranslator"
 import LLM_Request from "../LLM/LLM_Request"
 
 const MAX_TOKENS = 2000
+const LINE_HEIGHT = 18
+const FONT_SIZE = 14
+const HEADER_SIZE = 10
 
 // 配置 pdf.js worker（使用 Vite 资源 URL）
 GlobalWorkerOptions.workerSrc = workerSrc
 
 export default async function PDFProcessor(file, options = {}) {
-  const { sourceLang = "en", targetLang = "zh", apiKey = "", bookTitle = "", author = "", domain = "", model = "deepseek-chat", glossaryOnly = false, overrideGlossary = null, useGlossary = true, onProgress = undefined } = options
+  const { sourceLang = "en", targetLang = "zh", apiKey = "", bookTitle = "", author = "", domain = "", model = "deepseek-chat", glossaryOnly = false, overrideGlossary = null, useGlossary = true, onProgress = undefined, fontUrl = null } = options
 
   const arrayBuffer = await file.arrayBuffer()
   // 为 pdf.js 和 pdf-lib 分别准备独立的副本，防止其中一个传输后导致另一份被 detach
@@ -53,40 +56,19 @@ export default async function PDFProcessor(file, options = {}) {
     console.log("Skipping glossary generation for PDF as requested")
   }
 
-  // 3) 计算总 chunk 数量
-  let totalChunks = 0
-  pageTexts.forEach(({ text }) => {
-    const tokens = encode(text).length
-    if (tokens <= MAX_TOKENS) {
-      totalChunks += 1
-    } else {
-      const chunks = Math.ceil(tokens / MAX_TOKENS)
-      totalChunks += chunks
-    }
-  })
+  // 3) 计算总 chunk 数量，并提前切分
+  const perPageSegments = pageTexts.map(p => ({
+    index: p.index,
+    segments: chunkText(p.text, MAX_TOKENS)
+  }))
+  const totalChunks = perPageSegments.reduce((sum, p) => sum + p.segments.length, 0)
   let completedChunks = 0
 
-  // 4) 翻译（按页切分成小块）
+  // 4) 翻译（按切好的分段）
   const translatedPages = []
-  for (const page of pageTexts) {
-    const segments = []
-    let buffer = []
-    let tokenCount = 0
-    const sentences = page.text.split(/\n+/).filter(Boolean)
-    sentences.forEach((s) => {
-      const tks = encode(s).length
-      if (tokenCount + tks > MAX_TOKENS && buffer.length > 0) {
-        segments.push(buffer.join("\n"))
-        buffer = []
-        tokenCount = 0
-      }
-      buffer.push(s)
-      tokenCount += tks
-    })
-    if (buffer.length > 0) segments.push(buffer.join("\n"))
-
+  for (const page of perPageSegments) {
     const translatedSegments = []
-    for (const segment of segments) {
+    for (const segment of page.segments) {
       const translated = await LLM_Request([segment], termTable, "text", "", { sourceLang, targetLang, apiKey, bookTitle, author, domain, model }).catch((err) => {
         console.warn("PDF translation failed, fallback to source", err)
         return [segment]
@@ -100,39 +82,140 @@ export default async function PDFProcessor(file, options = {}) {
 
     translatedPages.push({
       index: page.index,
-      original: page.text,
       translated: translatedSegments.join("\n\n")
     })
   }
 
   // 5) 生成新 PDF：保留原页面，附加译文页，图片等元素保持原样
   const pdfDoc = await PDFDocument.load(new Uint8Array(pdfLibBytes))
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+  const font = await loadFont(pdfDoc, fontUrl)
   translatedPages.forEach(({ index, translated }) => {
     const basePage = pdfDoc.getPage(index - 1) || pdfDoc.getPage(0)
     const { width, height } = basePage.getSize()
-    const page = pdfDoc.addPage([width, height])
+    let page = pdfDoc.addPage([width, height])
     const margin = 40
     const textWidth = width - margin * 2
-    const wrapped = wrapText(translated, 14, font, textWidth)
-    let cursorY = height - margin
+    const wrapped = wrapText(translated, FONT_SIZE, font, textWidth)
+    let cursorY = height - margin - HEADER_SIZE - 4
+
+    const drawHeader = () => {
+      page.drawText(`Page ${index} Translation`, { x: margin, y: height - margin + 6, size: HEADER_SIZE, font })
+    }
+
+    drawHeader()
     page.setFont(font)
-    page.setFontSize(14)
+    page.setFontSize(FONT_SIZE)
+
     wrapped.forEach(line => {
       if (cursorY < margin) {
-        cursorY = height - margin
+        page = pdfDoc.addPage([width, height])
+        drawHeader()
+        page.setFont(font)
+        page.setFontSize(FONT_SIZE)
+        cursorY = height - margin - HEADER_SIZE - 4
       }
-      page.drawText(line, { x: margin, y: cursorY })
-      cursorY -= 18
+      if (line !== "") {
+        page.drawText(line, { x: margin, y: cursorY })
+      }
+      cursorY -= LINE_HEIGHT
     })
-    page.drawText(`Page ${index} Translation`, { x: margin, y: height - margin + 10, size: 10, font })
   })
 
   const pdfBytes = await pdfDoc.save()
   triggerDownload(pdfBytes, file.name.replace(/\.[^.]+$/, "") + "_translated.pdf")
 }
 
+function chunkText(text, maxTokens) {
+  const sentences = []
+  const regex = /[^\\n\\.\\?!。！？；;]+[\\.\\?!。！？；;]?/g
+  const matches = text.match(regex)
+  if (matches) {
+    matches.forEach((m) => {
+      const s = m.trim()
+      if (s) sentences.push(s)
+    })
+  }
+  if (sentences.length === 0 && text) {
+    sentences.push(text.trim())
+  }
+
+  const segments = []
+  let buffer = []
+  let tokenCount = 0
+
+  const flushBuffer = () => {
+    if (buffer.length) {
+      segments.push(buffer.join(" "))
+      buffer = []
+      tokenCount = 0
+    }
+  }
+
+  const pushLongWord = (word) => segments.push(word)
+
+  for (const sentence of sentences) {
+    const sentTokens = encode(sentence).length
+    if (sentTokens > maxTokens) {
+      flushBuffer()
+      const words = sentence.split(/\s+/).filter(Boolean)
+      let wbuf = []
+      let wcount = 0
+      for (const word of words) {
+        const wTokens = encode(word).length
+        if (wTokens > maxTokens) {
+          pushLongWord(word)
+          continue
+        }
+        if (wcount + wTokens > maxTokens && wbuf.length) {
+          segments.push(wbuf.join(" "))
+          wbuf = []
+          wcount = 0
+        }
+        wbuf.push(word)
+        wcount += wTokens
+      }
+      if (wbuf.length) segments.push(wbuf.join(" "))
+      continue
+    }
+
+    if (tokenCount + sentTokens > maxTokens && buffer.length) {
+      flushBuffer()
+    }
+    buffer.push(sentence)
+    tokenCount += sentTokens
+  }
+
+  flushBuffer()
+  if (segments.length === 0) {
+    segments.push(text || "")
+  }
+  return segments
+}
+
+async function loadFont(pdfDoc, fontUrl) {
+  // 优先加载用户提供的 Unicode 字体，以避免 CJK 被替换为 '?'
+  if (fontUrl) {
+    try {
+      const fontkit = (await import("@pdf-lib/fontkit")).default
+      pdfDoc.registerFontkit(fontkit)
+      const fontBytes = await fetch(fontUrl).then((res) => res.arrayBuffer())
+      return await pdfDoc.embedFont(new Uint8Array(fontBytes))
+    } catch (err) {
+      console.warn("Custom font load failed, fallback to built-in fonts", err)
+    }
+  }
+
+  // 兜底：仍用内置字体，非拉丁字符会被 '?' 代替
+  try {
+    return await pdfDoc.embedFont(StandardFonts.Helvetica)
+  } catch (err) {
+    console.warn("Fallback font load failed, cannot embed Helvetica", err)
+    return pdfDoc.embedFont(StandardFonts.Courier)
+  }
+}
+
 function sanitizeForFont(font, text) {
+  if (!font || typeof font.encodeText !== "function") return text
   const chars = Array.from(text)
   const safe = []
   for (const ch of chars) {
@@ -150,6 +233,10 @@ function wrapText(text, fontSize, font, maxWidth) {
   const lines = []
   const paragraphs = text.split(/\n+/)
   paragraphs.forEach(p => {
+    if (!p) {
+      lines.push("")
+      return
+    }
     const words = p.split(/\s+/)
     let current = ""
     words.forEach(word => {

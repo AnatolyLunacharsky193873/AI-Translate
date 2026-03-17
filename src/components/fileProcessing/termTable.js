@@ -94,11 +94,12 @@ const workerCode = () => {
         // 辅助检测：是否为大写开头
         const isCapitalized = (word) => /^[A-Z]/.test(word);
         
+        const stopWords = language === "fr" ? STOP_WORDS_FRE : STOP_WORDS_ENG;
+
         // 辅助检测：词组首尾是否合法 (不能以停用词开头或结尾)
         const isValidPhrase = (tokens) => {
             const first = tokens[0].toLowerCase();
             const last = tokens[tokens.length - 1].toLowerCase();
-            const stopWords = language === "fr" ? STOP_WORDS_FRE : STOP_WORDS_ENG;
             if (stopWords.has(first) || stopWords.has(last)) return false;
             return true;
         };
@@ -117,9 +118,9 @@ const workerCode = () => {
                 if (slice.some(t => t === "'")) continue;
 
                 const lowerWords = slice.map(w => w.toLowerCase());
-                
+
                 // 必须不完全是停用词 (比如 "of the" 直接丢弃)
-                const allStop = lowerWords.every(w => STOP_WORDS_FRE.has(w));
+                const allStop = lowerWords.every(w => stopWords.has(w));
                 if (allStop) continue;
 
                 // 词组边界检查
