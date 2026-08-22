@@ -4,9 +4,44 @@ const BASE_DELAY_MS = 200
 const REQUEST_TIMEOUT_MS_DS = 60000
 const REQUEST_TIMEOUT_MS_GPT = 180000
 
+const LANGUAGE_PROMPT_NAMES = {
+  auto: "the language detected from the source text",
+  en: "English",
+  zh: "Simplified Chinese",
+  es: "Spanish",
+  fr: "French",
+  ja: "Japanese",
+  pt: "Portuguese",
+}
+
+const LANGUAGE_ALIASES = {
+  "detect this language": "auto",
+  "auto detect": "auto",
+  english: "en",
+  chinese: "zh",
+  "simplified chinese": "zh",
+  "español": "es",
+  spanish: "es",
+  french: "fr",
+  jp: "ja",
+  japanese: "ja",
+  "português": "pt",
+  portuguese: "pt",
+}
+
+function normalizeLanguageCode(value) {
+  const key = String(value ?? "").trim().toLowerCase()
+  return LANGUAGE_ALIASES[key] || key
+}
+
+function getLanguagePromptName(value) {
+  const code = normalizeLanguageCode(value)
+  return LANGUAGE_PROMPT_NAMES[code] || String(value || "the source language")
+}
+
 export default async function LLM_Request(textChunks, termTable, mode = "text", context = "", options = {}){
-  const sourceLang = options.sourceLang
-  const targetLang = options.targetLang
+  const sourceLang = getLanguagePromptName(options.sourceLang || "en")
+  const targetLang = getLanguagePromptName(options.targetLang || "zh")
   const author = options.author
   const bookTitle = options.bookTitle
   const domain = options.domain
@@ -117,16 +152,16 @@ export default async function LLM_Request(textChunks, termTable, mode = "text", 
   - **Canonical Translations**: You MUST prioritize established, canonical translations used in existing published editions of this book.
   - **Author's Idiolect**: If ${author} uses specific words in unique ways (e.g., Hegel's "Geist", Heidegger's "Dasein", or Rowling's "Muggle"),
    you must use the accepted standard translation for that specific context, not the literal dictionary definition.
-  - **Reference Translator**: "Follow the most widely accepted scholarly or literary standard."}
+  - **Reference Translator**: "Follow the most widely accepted scholarly or literary standard."
 
   ### 2. Disambiguation Rules
   - **Polysemy**: If a term has multiple meanings, choose the one that fits the specific context of **${domain}** and this specific book.
   - **Consistency**: Ensure that related terms follow a consistent naming convention (e.g., consistent rank names in a military novel).
 
   ### 3. Output Format
-  - You will receive a JSON array of English terms.
-  - You must return a strict **JSON Object** where keys are the English terms and values are the Chinese translations.
-  - Format: \`{ "${sourceLang} Term": "${targetLang} Translation", ... }\`example: "Being": "存在" 
+  - You will receive a JSON array of terms extracted from ${sourceLang}.
+  - You must return a strict **JSON Object** where keys are the original ${sourceLang} terms and values are the ${targetLang} translations.
+  - Format: \`{ "Source Term": "Target Translation", ... }\`
   - Do not add explanations or notes. Only return the JSON.`
   }
 

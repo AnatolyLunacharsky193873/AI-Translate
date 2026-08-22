@@ -97,6 +97,21 @@
   box-shadow: 0 0 10px rgba(203, 161, 100, 0.1);
 }
 
+select.translate-input {
+  color-scheme: dark;
+  background-color: rgba(18, 18, 20, 0.95);
+}
+
+select.translate-input option {
+  background-color: #121214;
+  color: #e2dcc8;
+}
+
+select.translate-input option:checked {
+  background-color: #2a2520;
+  color: #cba164;
+}
+
 .translate-help {
   margin-left: 8px;
   background: rgba(203,161,100,0.15);

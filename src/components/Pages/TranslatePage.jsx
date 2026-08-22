@@ -5,6 +5,25 @@ import EpubProcessor from "../fileProcessing/EpubProcessor"
 import PDFProcessor from "../fileProcessing/PDFProcessor"
 import { useNavigate } from "react-router-dom";
 
+const SOURCE_LANGUAGE_OPTIONS = [
+  { value: "auto", label: "Auto Detect" },
+  { value: "en", label: "English" },
+  { value: "zh", label: "Chinese" },
+  { value: "es", label: "Spanish" },
+  { value: "fr", label: "French" },
+  { value: "ja", label: "Japanese" },
+  { value: "pt", label: "Portuguese" },
+]
+
+const TARGET_LANGUAGE_OPTIONS = [
+  { value: "zh", label: "Simplified Chinese" },
+  { value: "en", label: "English" },
+  { value: "es", label: "Spanish" },
+  { value: "ja", label: "Japanese" },
+  { value: "fr", label: "French" },
+  { value: "pt", label: "Portuguese" },
+]
+
 const TranslationPage = () => {
   const [file, setFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -20,7 +39,7 @@ const TranslationPage = () => {
   const [formData, setFormData] = useState({
     apiKey: "",
     fileType: "epub",
-    sourceLang: "eng",
+    sourceLang: "en",
     targetLang: "zh",
     model: "deepseek-chat",
     bookTitle: "",
@@ -56,8 +75,9 @@ const TranslationPage = () => {
     } else {
       setTranslateProgress(null)
     }
-    if (formData.fileType === "epub"){
-      await EpubProcessor(file, {
+    try {
+      if (formData.fileType === "epub"){
+        await EpubProcessor(file, {
         apiKey: formData.apiKey,
         sourceLang: formData.sourceLang,
         targetLang: formData.targetLang,
@@ -79,9 +99,9 @@ const TranslationPage = () => {
           setEditableGlossary(sorted)
           setGlossaryReady(true)
         }
-      })
-    } else if (formData.fileType === "pdf") {
-      await PDFProcessor(file, {
+        })
+      } else if (formData.fileType === "pdf") {
+        await PDFProcessor(file, {
         apiKey: formData.apiKey,
         sourceLang: formData.sourceLang,
         targetLang: formData.targetLang,
@@ -103,10 +123,15 @@ const TranslationPage = () => {
           setEditableGlossary(sorted)
           setGlossaryReady(true)
         }
-      })
+        })
+      }
+    } catch (error) {
+      console.error("Document translation failed", error)
+      alert(error?.message || "Document translation failed. Please try again.")
+    } finally {
+      setIsProcessing(false)
+      setTranslateProgress(null)
     }
-    setIsProcessing(false)
-    setTranslateProgress(null)
   }
 
   return (
@@ -155,6 +180,8 @@ const TranslationPage = () => {
                   <option value="deepseek-chat">deepseek-chat(Recommended)</option>
                   <option value="gpt-5-mini">gpt-5-mini</option>
                   <option value="gpt-5.2">gpt-5.2</option>
+                  <option value="gpt-5.4">gpt-5.4</option>
+                  <option value="gpt-5.5">gpt-5.5</option>
                 </select>
               </div>
               <label className="translate-checkbox">
@@ -185,12 +212,9 @@ const TranslationPage = () => {
                   value={formData.sourceLang}
                   onChange={(e) => setFormData({ ...formData, sourceLang: e.target.value })}
                 >
-                  <option value="detect this language">Auto Detect</option>
-                  <option value="en">English</option>
-                  <option value="zh">Chinese</option>
-                  <option value="es">Spanish</option>
-                  <option value="fr">French</option>
-                  <option value="jp">Japanese</option>
+                  {SOURCE_LANGUAGE_OPTIONS.map(({ value, label }) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
                 </select>
               </div>
               <div className="translate-field">
@@ -200,11 +224,9 @@ const TranslationPage = () => {
                   value={formData.targetLang}
                   onChange={(e) => setFormData({ ...formData, targetLang: e.target.value })}
                 >
-                  <option value="zh">Simplified Chinese</option>
-                  <option value="en">English</option>
-                  <option value="es">Spanish</option>
-                  <option value="jp">Japanese</option>
-                  <option value="fr">French</option>
+                  {TARGET_LANGUAGE_OPTIONS.map(({ value, label }) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
                 </select>
               </div>
               <button
@@ -375,6 +397,7 @@ const TranslationPage = () => {
                     type="button"
                     className="translate-format-button"
                     onClick={() => setEditableGlossary([...editableGlossary, { term: "", translation: "" }])}
+                    
                   >
                     Add Term
                   </button>

@@ -7,6 +7,26 @@
  * 3. 频率+大写率+长度 综合评分
  */
 
+const LANGUAGE_ALIASES = {
+    "detect this language": "auto",
+    "auto detect": "auto",
+    english: "en",
+    chinese: "zh",
+    "simplified chinese": "zh",
+    "español": "es",
+    spanish: "es",
+    french: "fr",
+    jp: "ja",
+    japanese: "ja",
+    "português": "pt",
+    portuguese: "pt",
+}
+
+function normalizeLanguageCode(value) {
+    const key = String(value ?? "").trim().toLowerCase()
+    return LANGUAGE_ALIASES[key] || key
+}
+
 // 1. Worker 内部代码 (作为字符串存储，运行时生成 Blob)
 const workerCode = () => {
     // --- 配置与常量 ---
@@ -64,6 +84,21 @@ const workerCode = () => {
     "valeur", "vers", "via", "voie", "voient", "vont", "vos", "votre", "vous", "vu",
     "y"])
 
+    // 葡萄牙语
+    const STOP_WORDS_POR = new Set([
+    "a", "à", "às", "ao", "aos", "aquela", "aquelas", "aquele", "aqueles", "aquilo",
+    "as", "até", "com", "como", "da", "das", "de", "dela", "delas", "dele", "deles",
+    "depois", "do", "dos", "e", "é", "ela", "elas", "ele", "eles", "em", "entre",
+    "era", "eram", "essa", "essas", "esse", "esses", "esta", "está", "estão", "estar",
+    "estas", "estava", "este", "estes", "eu", "foi", "foram", "há", "isso", "isto",
+    "já", "lhe", "lhes", "mais", "mas", "me", "mesmo", "meu", "meus", "minha",
+    "minhas", "muito", "na", "nas", "não", "nao", "nem", "no", "nos", "nossa",
+    "nossas", "nosso", "nossos", "num", "numa", "o", "os", "ou", "para", "pela",
+    "pelas", "pelo", "pelos", "por", "porque", "qual", "quando", "que", "quem", "se",
+    "sem", "ser", "seu", "seus", "só", "so", "sua", "suas", "também", "tambem", "te",
+    "tem", "tinha", "todo", "todos", "tu", "um", "uma", "você", "voce", "vocês", "voces"
+    ])
+
     // 监听主线程消息
     self.onmessage = (e) => {
         const { text, topN, minFreq, language } = e.data;
@@ -94,7 +129,7 @@ const workerCode = () => {
         // 辅助检测：是否为大写开头
         const isCapitalized = (word) => /^[A-Z]/.test(word);
         
-        const stopWords = language === "fr" ? STOP_WORDS_FRE : STOP_WORDS_ENG;
+        const stopWords = language === "fr" ? STOP_WORDS_FRE : language === "pt" ? STOP_WORDS_POR : STOP_WORDS_ENG;
 
         // 辅助检测：词组首尾是否合法 (不能以停用词开头或结尾)
         const isValidPhrase = (tokens) => {
@@ -205,6 +240,7 @@ const workerCode = () => {
  */
 export function generateTermTable(fullText, options = {}) {
     const { topN = 100, minFreq = 3, language = "en" } = options;
+    const languageCode = normalizeLanguageCode(language || "en")
 
     return new Promise((resolve, reject) => {
         if (!fullText || typeof fullText !== 'string') {
@@ -221,7 +257,7 @@ export function generateTermTable(fullText, options = {}) {
         const worker = new Worker(workerUrl);
 
         // 3. 发送数据
-        worker.postMessage({ text: fullText, topN, minFreq, language });
+        worker.postMessage({ text: fullText, topN, minFreq, language: languageCode });
 
         // 4. 监听结果
         worker.onmessage = (e) => {

@@ -1,5 +1,16 @@
 import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
+import { HttpsProxyAgent } from "https-proxy-agent"
+
+const configuredProxy = process.env.VITE_OUTBOUND_PROXY
+const outboundProxy =
+  configuredProxy === "direct" ? "" :
+  configuredProxy ||
+  process.env.HTTPS_PROXY ||
+  process.env.HTTP_PROXY ||
+  "http://127.0.0.1:1081"
+
+const outboundProxyAgent = outboundProxy ? new HttpsProxyAgent(outboundProxy) : undefined
 
 export default defineConfig({
   plugins: [react()],
@@ -7,23 +18,22 @@ export default defineConfig({
   build: {
     outDir: "docs",
   },
-  
-  //CORS连不上只能这样
   server: {
+    host: "127.0.0.1",
     proxy: {
-      //deepseek
-      '/deepseek': {
-        target: 'https://api.deepseek.com',
+      "/deepseek": {
+        target: "https://api.deepseek.com",
         changeOrigin: true,
         secure: true,
-        rewrite: (path) => path.replace(/^\/deepseek/, ''),
+        agent: outboundProxyAgent,
+        rewrite: (path) => path.replace(/^\/deepseek/, ""),
       },
-      // OpenAI
-      '/openai': {
-        target: 'https://api.openai.com/v1',
+      "/openai": {
+        target: "https://api.openai.com/v1",
         changeOrigin: true,
         secure: true,
-        rewrite: (path) => path.replace(/^\/openai/, ''),
+        agent: outboundProxyAgent,
+        rewrite: (path) => path.replace(/^\/openai/, ""),
       },
     },
   },

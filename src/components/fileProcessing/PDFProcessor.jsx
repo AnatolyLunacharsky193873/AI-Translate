@@ -1,269 +1,227 @@
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist"
 import workerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url"
-import { PDFDocument, StandardFonts } from "pdf-lib"
-import { encode } from "gpt-tokenizer"
+import { PDFDocument } from "pdf-lib"
+import defaultUnicodeFontUrl from "../assets/fonts/NotoSansSC-VF.ttf?url"
 import { generateTermTable } from "./termTable"
 import translateGlossary from "./GlossaryTranslator"
+import { chunkText, reconstructPageText, sanitizeForFont, wrapText } from "./pdfLayout"
 import LLM_Request from "../LLM/LLM_Request"
 
 const MAX_TOKENS = 2000
-const LINE_HEIGHT = 18
-const FONT_SIZE = 14
-const HEADER_SIZE = 10
+const HEADER_SIZE = 9
+const MIN_FONT_SIZE = 9
+const MAX_FONT_SIZE = 12
 
-// 配置 pdf.js worker（使用 Vite 资源 URL）
 GlobalWorkerOptions.workerSrc = workerSrc
 
 export default async function PDFProcessor(file, options = {}) {
-  const { sourceLang = "en", targetLang = "zh", apiKey = "", bookTitle = "", author = "", domain = "", model = "deepseek-chat", glossaryOnly = false, overrideGlossary = null, useGlossary = true, onProgress = undefined, fontUrl = null } = options
+  const {
+    sourceLang = "en",
+    targetLang = "zh",
+    apiKey = "",
+    bookTitle = "",
+    author = "",
+    domain = "",
+    model = "deepseek-chat",
+    glossaryOnly = false,
+    overrideGlossary = null,
+    useGlossary = true,
+    onProgress = undefined,
+    fontUrl = null,
+  } = options
 
   const arrayBuffer = await file.arrayBuffer()
-  // 为 pdf.js 和 pdf-lib 分别准备独立的副本，防止其中一个传输后导致另一份被 detach
   const pdfJsBytes = arrayBuffer.slice(0)
   const pdfLibBytes = arrayBuffer.slice(0)
 
-  // 1) 提取纯文本（按页）
   const pdf = await getDocument({ data: pdfJsBytes }).promise
-  const pages = pdf.numPages
   const pageTexts = []
-  for (let i = 1; i <= pages; i += 1) {
-    const page = await pdf.getPage(i)
+  for (let index = 1; index <= pdf.numPages; index += 1) {
+    const page = await pdf.getPage(index)
+    const viewport = page.getViewport({ scale: 1 })
     const textContent = await page.getTextContent()
-    const pageText = textContent.items.map((item) => item.str).join(" ").trim()
-    if (pageText.length > 0) {
-      pageTexts.push({ index: i, text: pageText })
-    } else {
-      pageTexts.push({ index: i, text: "" })
-    }
-  }
+    const layout = reconstructPageText(textContent.items, viewport.width)
 
-  // 2) 生成术语表
+    pageTexts.push({
+      index,
+      text: layout.text,
+      width: viewport.width,
+      height: viewport.height,
+      medianFontSize: layout.medianFontSize,
+    })
+    page.cleanup()
+  }
+  await pdf.destroy()
+
   let termTable = []
   if (useGlossary) {
-    const fullPlainText = pageTexts.map(p => p.text).join("\n")
-    let rawTable = await generateTermTable(fullPlainText, { topN: 150, minFreq: 3, language: sourceLang })
-    const glossary = await translateGlossary(rawTable, { sourceLang, targetLang, apiKey, bookTitle, author, domain, model })
-    let translationGlossary = glossary.simpleGlossary
-    if (overrideGlossary && Array.isArray(overrideGlossary) && overrideGlossary.length > 0) {
-      translationGlossary = overrideGlossary.map(item => ({ term: item.term, translation: item.translation || "" }))
-      console.log("using user-edited glossary for PDF:", translationGlossary)
+    if (Array.isArray(overrideGlossary)) {
+      termTable = overrideGlossary
+        .filter(item => item?.term)
+        .map(item => ({ term: item.term, translation: item.translation || "" }))
+    } else {
+      const fullPlainText = pageTexts.map(page => page.text).filter(Boolean).join("\n\n")
+      const rawTable = await generateTermTable(fullPlainText, {
+        topN: 150,
+        minFreq: 3,
+        language: sourceLang,
+      })
+      const glossary = await translateGlossary(rawTable, {
+        sourceLang,
+        targetLang,
+        apiKey,
+        bookTitle,
+        author,
+        domain,
+        model,
+      })
+      termTable = glossary.simpleGlossary
+
+      if (glossaryOnly) {
+        return { detailedGlossary: glossary.detailedGlossary }
+      }
     }
-    termTable = translationGlossary
-    if (glossaryOnly) {
-      return { detailedGlossary: glossary.detailedGlossary }
-    }
-  } else {
-    console.log("Skipping glossary generation for PDF as requested")
   }
 
-  // 3) 计算总 chunk 数量，并提前切分
-  const perPageSegments = pageTexts.map(p => ({
-    index: p.index,
-    segments: chunkText(p.text, MAX_TOKENS)
+  const pdfDoc = await PDFDocument.load(new Uint8Array(pdfLibBytes))
+  const font = await loadFont(pdfDoc, fontUrl)
+  const perPageSegments = pageTexts.map(page => ({
+    ...page,
+    segments: chunkText(page.text, MAX_TOKENS),
   }))
-  const totalChunks = perPageSegments.reduce((sum, p) => sum + p.segments.length, 0)
+  const totalChunks = perPageSegments.reduce((sum, page) => sum + page.segments.length, 0)
   let completedChunks = 0
 
-  // 4) 翻译（按切好的分段）
   const translatedPages = []
   for (const page of perPageSegments) {
     const translatedSegments = []
+    let context = ""
+
     for (const segment of page.segments) {
-      const translated = await LLM_Request([segment], termTable, "text", "", { sourceLang, targetLang, apiKey, bookTitle, author, domain, model }).catch((err) => {
-        console.warn("PDF translation failed, fallback to source", err)
-        return [segment]
-      })
-      translatedSegments.push(Array.isArray(translated) ? translated.join("\n") : translated)
+      const translated = await LLM_Request(
+        [segment],
+        termTable,
+        "text",
+        context,
+        { sourceLang, targetLang, apiKey, bookTitle, author, domain, model },
+      )
+      const translatedText = Array.isArray(translated)
+        ? translated.join("\n")
+        : String(translated || segment)
+
+      translatedSegments.push(translatedText)
+      context = segment.slice(-4000)
       completedChunks += 1
-      if (onProgress && totalChunks > 0) {
-        onProgress(completedChunks, totalChunks)
-      }
+      onProgress?.(completedChunks, totalChunks)
     }
 
     translatedPages.push({
-      index: page.index,
-      translated: translatedSegments.join("\n\n")
+      ...page,
+      translated: translatedSegments.join("\n\n"),
     })
   }
 
-  // 5) 生成新 PDF：保留原页面，附加译文页，图片等元素保持原样
-  const pdfDoc = await PDFDocument.load(new Uint8Array(pdfLibBytes))
-  const font = await loadFont(pdfDoc, fontUrl)
-  translatedPages.forEach(({ index, translated }) => {
-    const basePage = pdfDoc.getPage(index - 1) || pdfDoc.getPage(0)
-    const { width, height } = basePage.getSize()
-    let page = pdfDoc.addPage([width, height])
-    const margin = 40
-    const textWidth = width - margin * 2
-    const wrapped = wrapText(translated, FONT_SIZE, font, textWidth)
-    let cursorY = height - margin - HEADER_SIZE - 4
+  let insertedPages = 0
 
-    const drawHeader = () => {
-      page.drawText(`Page ${index} Translation`, { x: margin, y: height - margin + 6, size: HEADER_SIZE, font })
-    }
+  for (const translatedPage of translatedPages) {
+    if (!translatedPage.translated.trim()) continue
 
-    drawHeader()
-    page.setFont(font)
-    page.setFontSize(FONT_SIZE)
-
-    wrapped.forEach(line => {
-      if (cursorY < margin) {
-        page = pdfDoc.addPage([width, height])
-        drawHeader()
-        page.setFont(font)
-        page.setFontSize(FONT_SIZE)
-        cursorY = height - margin - HEADER_SIZE - 4
-      }
-      if (line !== "") {
-        page.drawText(line, { x: margin, y: cursorY })
-      }
-      cursorY -= LINE_HEIGHT
-    })
-  })
+    const originalPagePosition = translatedPage.index - 1 + insertedPages
+    const insertAt = originalPagePosition + 1
+    insertedPages += insertTranslationPages(pdfDoc, insertAt, translatedPage, font)
+  }
 
   const pdfBytes = await pdfDoc.save()
-  triggerDownload(pdfBytes, file.name.replace(/\.[^.]+$/, "") + "_translated.pdf")
+  triggerDownload(pdfBytes, file.name.replace(/\.[^.]+$/u, "") + "_translated.pdf")
 }
 
-function chunkText(text, maxTokens) {
-  const sentences = []
-  const regex = /[^\\n\\.\\?!。！？；;]+[\\.\\?!。！？；;]?/g
-  const matches = text.match(regex)
-  if (matches) {
-    matches.forEach((m) => {
-      const s = m.trim()
-      if (s) sentences.push(s)
-    })
-  }
-  if (sentences.length === 0 && text) {
-    sentences.push(text.trim())
-  }
+async function loadFont(pdfDoc, customFontUrl) {
+  const fontkitModule = await import("@pdf-lib/fontkit")
+  pdfDoc.registerFontkit(fontkitModule.default || fontkitModule)
 
-  const segments = []
-  let buffer = []
-  let tokenCount = 0
+  const fontUrls = [...new Set([customFontUrl, defaultUnicodeFontUrl].filter(Boolean))]
+  let lastError = null
 
-  const flushBuffer = () => {
-    if (buffer.length) {
-      segments.push(buffer.join(" "))
-      buffer = []
-      tokenCount = 0
-    }
-  }
-
-  const pushLongWord = (word) => segments.push(word)
-
-  for (const sentence of sentences) {
-    const sentTokens = encode(sentence).length
-    if (sentTokens > maxTokens) {
-      flushBuffer()
-      const words = sentence.split(/\s+/).filter(Boolean)
-      let wbuf = []
-      let wcount = 0
-      for (const word of words) {
-        const wTokens = encode(word).length
-        if (wTokens > maxTokens) {
-          pushLongWord(word)
-          continue
-        }
-        if (wcount + wTokens > maxTokens && wbuf.length) {
-          segments.push(wbuf.join(" "))
-          wbuf = []
-          wcount = 0
-        }
-        wbuf.push(word)
-        wcount += wTokens
-      }
-      if (wbuf.length) segments.push(wbuf.join(" "))
-      continue
-    }
-
-    if (tokenCount + sentTokens > maxTokens && buffer.length) {
-      flushBuffer()
-    }
-    buffer.push(sentence)
-    tokenCount += sentTokens
-  }
-
-  flushBuffer()
-  if (segments.length === 0) {
-    segments.push(text || "")
-  }
-  return segments
-}
-
-async function loadFont(pdfDoc, fontUrl) {
-  // 优先加载用户提供的 Unicode 字体，以避免 CJK 被替换为 '?'
-  if (fontUrl) {
+  for (const fontUrl of fontUrls) {
     try {
-      const fontkit = (await import("@pdf-lib/fontkit")).default
-      pdfDoc.registerFontkit(fontkit)
-      const fontBytes = await fetch(fontUrl).then((res) => res.arrayBuffer())
-      return await pdfDoc.embedFont(new Uint8Array(fontBytes))
-    } catch (err) {
-      console.warn("Custom font load failed, fallback to built-in fonts", err)
-    }
-  }
-
-  // 兜底：仍用内置字体，非拉丁字符会被 '?' 代替
-  try {
-    return await pdfDoc.embedFont(StandardFonts.Helvetica)
-  } catch (err) {
-    console.warn("Fallback font load failed, cannot embed Helvetica", err)
-    return pdfDoc.embedFont(StandardFonts.Courier)
-  }
-}
-
-function sanitizeForFont(font, text) {
-  if (!font || typeof font.encodeText !== "function") return text
-  const chars = Array.from(text)
-  const safe = []
-  for (const ch of chars) {
-    try {
-      font.encodeText(ch)
-      safe.push(ch)
-    } catch (e) {
-      safe.push("?")
-    }
-  }
-  return safe.join("")
-}
-
-function wrapText(text, fontSize, font, maxWidth) {
-  const lines = []
-  const paragraphs = text.split(/\n+/)
-  paragraphs.forEach(p => {
-    if (!p) {
-      lines.push("")
-      return
-    }
-    const words = p.split(/\s+/)
-    let current = ""
-    words.forEach(word => {
-      const testLine = current ? `${current} ${word}` : word
-      const safeLine = sanitizeForFont(font, testLine)
-      const width = font.widthOfTextAtSize(safeLine, fontSize)
-      if (width > maxWidth && current) {
-        lines.push(sanitizeForFont(font, current))
-        current = word
-      } else {
-        current = testLine
+      const response = await fetch(fontUrl)
+      if (!response.ok) {
+        throw new Error(`Font request failed with status ${response.status}`)
       }
-    })
-    if (current) lines.push(sanitizeForFont(font, current))
-    lines.push("")
-  })
-  return lines
+      const fontBytes = await response.arrayBuffer()
+      return await pdfDoc.embedFont(new Uint8Array(fontBytes), { subset: true })
+    } catch (error) {
+      lastError = error
+      console.warn(`Unable to load PDF font from ${fontUrl}`, error)
+    }
+  }
+
+  throw new Error("Unable to load the bundled Unicode PDF font", { cause: lastError })
 }
 
-function triggerDownload(bytes, filename){
+function clamp(value, minimum, maximum) {
+  return Math.min(maximum, Math.max(minimum, value))
+}
+
+function insertTranslationPages(pdfDoc, initialIndex, translatedPage, font) {
+  const { index: sourcePage, width, height, translated, medianFontSize } = translatedPage
+  const margin = clamp(width * 0.07, 28, 54)
+  const textWidth = Math.max(40, width - margin * 2)
+  const fontSize = clamp(medianFontSize || 11, MIN_FONT_SIZE, MAX_FONT_SIZE)
+  const lineHeight = fontSize * 1.55
+  const lines = wrapText(translated, fontSize, font, textWidth)
+  let insertIndex = initialIndex
+  let continuation = 1
+  let page
+  let cursorY
+
+  const createPage = () => {
+    page = pdfDoc.insertPage(insertIndex, [width, height])
+    insertIndex += 1
+
+    const continuationLabel = continuation > 1 ? ` (${continuation})` : ""
+    const header = sanitizeForFont(font, `Page ${sourcePage} Translation${continuationLabel}`)
+    const headerY = height - margin + 4
+    page.drawText(header, { x: margin, y: headerY, size: HEADER_SIZE, font })
+    page.drawLine({
+      start: { x: margin, y: headerY - 7 },
+      end: { x: width - margin, y: headerY - 7 },
+      thickness: 0.5,
+      opacity: 0.35,
+    })
+    cursorY = headerY - HEADER_SIZE - 14
+    continuation += 1
+  }
+
+  createPage()
+  for (const line of lines) {
+    const requiredHeight = line === "" ? lineHeight * 0.55 : lineHeight
+    if (cursorY - requiredHeight < margin) {
+      createPage()
+    }
+
+    if (line) {
+      page.drawText(line, {
+        x: margin,
+        y: cursorY,
+        size: fontSize,
+        font,
+      })
+    }
+    cursorY -= requiredHeight
+  }
+
+  return insertIndex - initialIndex
+}
+
+function triggerDownload(bytes, filename) {
   const blob = new Blob([bytes], { type: "application/pdf" })
   const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }
